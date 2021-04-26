@@ -19,12 +19,12 @@ package controllers
 import (
 	"context"
 
+	canarianv1alpha1 "canarian.io/plover/api/v1alpha1"
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	canarianv1alpha1 "canarian.io/plover/api/v1alpha1"
 )
 
 // PloverReconciler reconciles a Plover object
@@ -51,6 +51,27 @@ func (r *PloverReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		"plover", req.NamespacedName,
 		"active", plover.Spec.Active,
 	)
+
+	var pods corev1.PodList
+
+	// Find all Pods
+	if err := r.List(ctx, &pods); err != nil {
+		log.Error(err, "unable to list  Pods")
+		return ctrl.Result{Requeue: true}, err
+	}
+	// report unhealthy pods
+	for _, item := range pods.Items {
+		for _, st := range item.Status.ContainerStatuses {
+			if !st.Ready {
+				r.Log.Info(
+					"Unhealthy Pod",
+					"Namespace", item.Namespace,
+					"Name", item.Name,
+				)
+			}
+		}
+
+	}
 
 	return ctrl.Result{}, nil
 }
