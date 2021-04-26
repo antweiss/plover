@@ -1,0 +1,10 @@
+apiVersion: canarian.canarian.io/v1alpha1
+kind: Plover
+metadata:
+  name: plover-sample
+spec:
+  active: true
+  incidents: 
+    - name: ImagePullBackoff
+      remediations:
+      - name: FixRegCred  

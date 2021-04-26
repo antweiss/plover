@@ -1,0 +1,24 @@
+# permissions for end users to edit plovers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: plover-editor-role
+rules:
+- apiGroups:
+  - canarian.canarian.io
+  resources:
+  - plovers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - canarian.canarian.io
+  resources:
+  - plovers/status
+  verbs:
+  - get

@@ -1,0 +1,7 @@
+domain: canarian.io
+repo: canarian.io/plover
+resources:
+- group: canarian
+  kind: Plover
+  version: v1alpha1
+version: "2"
