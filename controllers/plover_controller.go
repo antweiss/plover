@@ -55,20 +55,20 @@ func (r *PloverReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	var pods corev1.PodList
 
 	// Find all Pods
+
 	if err := r.List(ctx, &pods); err != nil {
 		log.Error(err, "unable to list  Pods")
 		return ctrl.Result{Requeue: true}, err
 	}
-	// report unhealthy pods
+	// report failed and pending pods
 	for _, item := range pods.Items {
-		for _, st := range item.Status.ContainerStatuses {
-			if !st.Ready {
-				r.Log.Info(
-					"Unhealthy Pod",
-					"Namespace", item.Namespace,
-					"Name", item.Name,
-				)
-			}
+		if item.Status.Phase != "Running" && item.Status.Phase != "Succeeded" {
+			r.Log.Info(
+				"Unhealthy Pod",
+				"Namespace", item.Namespace,
+				"Name", item.Name,
+				"Phase", item.Status.Phase,
+			)
 		}
 
 	}
