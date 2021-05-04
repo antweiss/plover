@@ -30,8 +30,9 @@ import (
 // PloverReconciler reconciles a Plover object
 type PloverReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Log           logr.Logger
+	Scheme        *runtime.Scheme
+	PodReconciler *PodReconciler
 }
 
 // +kubebuilder:rbac:groups=canarian.canarian.io,resources=plovers,verbs=get;list;watch;create;update;patch;delete
@@ -52,7 +53,7 @@ func (r *PloverReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		"active", plover.Spec.Active,
 	)
 
-	var pods corev1.PodList
+	var pods, sickPods corev1.PodList
 
 	// Find all Pods
 
@@ -63,6 +64,7 @@ func (r *PloverReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	// report failed and pending pods
 	for _, item := range pods.Items {
 		if item.Status.Phase != "Running" && item.Status.Phase != "Succeeded" {
+			sickPods.Items = append(sickPods.Items, item)
 			r.Log.Info(
 				"Unhealthy Pod",
 				"Namespace", item.Namespace,
@@ -72,8 +74,28 @@ func (r *PloverReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		}
 
 	}
+	_ = r.assignPlover(sickPods)
 
 	return ctrl.Result{}, nil
+}
+
+func (r *PloverReconciler) assignPlover(sickPods corev1.PodList) error {
+	for _, item := range sickPods.Items {
+		for _, status := range item.Status.ContainerStatuses {
+			if status.State.Waiting.Reason == "ImagePullBackOff" {
+				r.Log.Info(
+					"Found ImagePullBackOff",
+					"Namespace", item.Namespace,
+					"Name", item.Name,
+					"Container", status.Image,
+				)
+				r.PodReconciler.Reconcile(item,
+					status.Name,
+					"ImagePullBackOff")
+			}
+		}
+	}
+	return nil
 }
 
 func (r *PloverReconciler) SetupWithManager(mgr ctrl.Manager) error {

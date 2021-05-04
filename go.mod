@@ -3,6 +3,7 @@ module canarian.io/plover
 go 1.13
 
 require (
+	github.com/go-delve/delve v1.6.0 // indirect
 	github.com/go-logr/logr v0.1.0
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1

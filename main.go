@@ -66,10 +66,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.PloverReconciler{
+	podReconciler := &controllers.PodReconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("Plover"),
+		Log:    ctrl.Log.WithName("controllers").WithName("plover"),
 		Scheme: mgr.GetScheme(),
+	}
+
+	if err = (&controllers.PloverReconciler{
+		Client:        mgr.GetClient(),
+		Log:           ctrl.Log.WithName("controllers").WithName("Plover"),
+		Scheme:        mgr.GetScheme(),
+		PodReconciler: podReconciler,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Plover")
 		os.Exit(1)
