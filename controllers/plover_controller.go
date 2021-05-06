@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	canarianv1alpha1 "canarian.io/plover/api/v1alpha1"
 	"github.com/go-logr/logr"
@@ -76,22 +77,22 @@ func (r *PloverReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	}
 	_ = r.assignPlover(sickPods)
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
 }
 
 func (r *PloverReconciler) assignPlover(sickPods corev1.PodList) error {
 	for _, item := range sickPods.Items {
 		for _, status := range item.Status.ContainerStatuses {
-			if status.State.Waiting.Reason == "ImagePullBackOff" {
+			if status.State.Waiting.Reason == "ImagePullBackOff" || status.State.Waiting.Reason == "ErrImagePull" {
 				r.Log.Info(
-					"Found ImagePullBackOff",
+					"Found ImagePullBackOff or ErrImagePull",
 					"Namespace", item.Namespace,
 					"Name", item.Name,
 					"Container", status.Image,
 				)
 				r.PodReconciler.Reconcile(item,
 					status.Name,
-					"ImagePullBackOff")
+					status.State.Waiting.Reason)
 			}
 		}
 	}
