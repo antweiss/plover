@@ -30,7 +30,7 @@ func (r *PodReconciler) Reconcile(pod corev1.Pod,
 	ploverType string) (ctrl.Result, error) {
 
 	ctx := context.Background()
-	r.Log.Info("in pdReconciler",
+	r.Log.Info("in podReconciler",
 		"Pod", pod.Name,
 		"ns", pod.Namespace,
 		"container", containerName,
@@ -49,7 +49,7 @@ func (r *PodReconciler) Reconcile(pod corev1.Pod,
 					"the image repo",
 					"path", imageRepo,
 				)
-
+				secretFound := false
 				var nsSecrets, allSecrets corev1.SecretList
 				//first - look for secrets in pod namespace
 				if err := r.List(ctx, &nsSecrets, client.InNamespace(pod.Namespace)); err != nil {
@@ -65,6 +65,11 @@ func (r *PodReconciler) Reconcile(pod corev1.Pod,
 							"image repo", imageRepo,
 							"resolution", "don't know yet",
 						)
+						secretFound = true
+						r.Log.Info("Going to patch pod",
+							"pod name", pod.Name,
+							"secret", secret.Name,
+						)
 						//try to patch pod
 						patch := []byte(fmt.Sprintf(`{"spec":{"imagePullSecrets":[{"name": "%s"}]}}`,
 							secret.Name))
@@ -79,38 +84,48 @@ func (r *PodReconciler) Reconcile(pod corev1.Pod,
 						}
 					}
 				}
+				if !(secretFound) {
+					r.Log.Info("Didn't find appropriate secrets in ns")
+					if err := r.List(ctx, &allSecrets); err != nil {
+						r.Log.Error(err, "unable to list Secrets")
+						return ctrl.Result{RequeueAfter: 60 * time.Second}, err
+					}
+					for _, secret := range allSecrets.Items {
+						if r.checkSecretCandidate(secret, imageRepo) {
+							r.Log.Info(
+								"found appropriate docker secret",
+								"secret", secret.Name,
+								"namespace", secret.Namespace,
+								"image repo", imageRepo,
+							)
 
-				if err := r.List(ctx, &allSecrets); err != nil {
-					r.Log.Error(err, "unable to list Secrets")
-					return ctrl.Result{RequeueAfter: 60 * time.Second}, err
-				}
-				for _, secret := range allSecrets.Items {
-					if r.checkSecretCandidate(secret, imageRepo) {
-						r.Log.Info(
-							"found appropriate docker secret",
-							"secret", secret.Name,
-							"namespace", secret.Namespace,
-							"image repo", imageRepo,
-						)
-						newSecret := &corev1.Secret{
-							ObjectMeta: metav1.ObjectMeta{
-								Namespace: pod.Namespace,
-								Name:      "plover-" + rand.String(8),
-								Labels: map[string]string{
-									"plover": "true",
+							newSecret := &corev1.Secret{
+								ObjectMeta: metav1.ObjectMeta{
+									Namespace: pod.Namespace,
+									Name:      "plover-" + rand.String(8),
+									Labels: map[string]string{
+										"plover": "true",
+									},
 								},
-							},
-							Data: map[string][]byte{
-								".dockerconfigjson": secret.Data[".dockerconfigjson"],
-							},
-							Type: secret.Type,
+								Data: map[string][]byte{
+									".dockerconfigjson": secret.Data[".dockerconfigjson"],
+								},
+								Type: secret.Type,
+							}
+							if err := r.Create(ctx, newSecret); err != nil {
+								r.Log.Error(err, "unable to create Secret")
+								return ctrl.Result{Requeue: true}, err
+							} //if secret creation failed
+							r.Log.Info(
+								"Created docker secret",
+								"secret", newSecret.Name,
+								"namespace", newSecret.Namespace,
+								"image repo", imageRepo,
+							)
 						}
-						if err := r.Create(ctx, newSecret); err != nil {
-							r.Log.Error(err, "unable to create Secret")
-							return ctrl.Result{Requeue: true}, err
-						} //if secret creation failed
-					} //if it's a relevant secret
-				} //loop on all secrets
+						//if it's a relevant secret
+					} //loop on all secrets
+				}
 			} //if relevant container
 		} //loop on containers
 	} //if ImagePullBackofff
@@ -119,7 +134,15 @@ func (r *PodReconciler) Reconcile(pod corev1.Pod,
 
 func (r *PodReconciler) checkSecretCandidate(secret corev1.Secret, imageRepo string) bool {
 	if secret.Type == "kubernetes.io/dockerconfigjson" || secret.Type == "kubernetes.io/dockercfg" {
-		return strings.Contains(string(secret.Data[".dockerconfigjson"]), imageRepo)
+		//trim repo url to first slash
+		// because secrets are defined for base url
+		// e.g for https://myrepo.jfrog.io and not https://myprepo.jfrog.io/docker-virtual
+		baseRepo := imageRepo
+		if idx := strings.IndexByte(imageRepo, '/'); idx >= 0 {
+			baseRepo = imageRepo[:idx]
+		}
+		r.Log.Info("Checking secret", "secret name:", secret.Name, "image repo", baseRepo)
+		return strings.Contains(string(secret.Data[".dockerconfigjson"]), baseRepo)
 	}
 	return false
 }
